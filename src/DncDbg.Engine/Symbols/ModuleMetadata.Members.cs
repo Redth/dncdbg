@@ -36,6 +36,7 @@ internal sealed partial class ModuleMetadata
         }
         MethodDefinition method = _md.GetMethodDefinition(handle);
         MethodSignature<string> signature = method.DecodeSignature(SignatureNames.Instance, this);
+        var fallback = GetParameterDisplayFallback(method, signature.ParameterTypes.Length);
         string[] typeParameters = GetTypeGenericParameters(MetadataTokens.GetToken(method.GetDeclaringType()));
         string[] methodParameters = GetMethodGenericParameters(MetadataTokens.GetToken(handle));
         var parameters = method.GetParameters().Select(h => _md.GetParameter(h))
@@ -52,15 +53,79 @@ internal sealed partial class ModuleMetadata
             for (int parameterIndex = typeParameters.Length - 1; parameterIndex >= 0; parameterIndex--)
                 type = type.Replace("!" + parameterIndex, typeArguments != null && parameterIndex < typeArguments.Count
                     ? typeArguments[parameterIndex] ?? typeParameters[parameterIndex] : typeParameters[parameterIndex], StringComparison.Ordinal);
-            if (!parameters.TryGetValue(i + 1, out Parameter parameter))
-                return DisplayType(type);
-            if (type.StartsWith("ref ", StringComparison.Ordinal))
-                type = ((parameter.Attributes & ParameterAttributes.Out) != 0 ? "out "
-                    : (parameter.Attributes & ParameterAttributes.In) != 0 ? "in " : "ref ") + type[4..];
-            else if (argumentTypes != null && i < argumentTypes.Count && argumentTypes[i] is { } argumentType)
+            bool named = parameters.TryGetValue(i + 1, out Parameter parameter);
+            string modifier = "";
+            if (fallback[i].ByRef)
+            {
+                ParameterAttributes direction = named
+                    ? parameter.Attributes & (ParameterAttributes.In | ParameterAttributes.Out) : 0;
+                modifier = direction == ParameterAttributes.Out ? "out "
+                    : direction == ParameterAttributes.In ? "in " : "ref ";
+                type = type[4..];
+            }
+            if (argumentTypes != null && i < argumentTypes.Count && argumentTypes[i] is { } argumentType)
                 type = argumentType;
-            return DisplayType(type) + " " + _md.GetString(parameter.Name);
+            else if (!fallback[i].TypeAvailable || (argumentTypes != null && fallback[i].GenericVariable))
+                type = "";
+            return modifier + DisplayType(type) + (named ? (type.Length == 0 ? "" : " ") + _md.GetString(parameter.Name) : "");
         })) + ")";
+    }
+
+    private (bool TypeAvailable, bool ByRef, bool GenericVariable)[] GetParameterDisplayFallback(MethodDefinition method, int count)
+    {
+        var result = new (bool TypeAvailable, bool ByRef, bool GenericVariable)[count];
+        BlobReader reader = _md.GetBlobReader(method.Signature);
+        SignatureHeader header = reader.ReadSignatureHeader();
+        if (header.IsGeneric)
+            reader.ReadCompressedInteger();
+        reader.ReadCompressedInteger();
+        if (header.CallingConvention == SignatureCallingConvention.VarArgs || !ReadType(ref reader, out _, out _))
+            return result;
+        for (int i = 0; i < count; i++)
+        {
+            bool supported = ReadType(ref reader, out bool byRef, out bool genericVariable);
+            result[i] = (supported, byRef, genericVariable);
+            if (!supported)
+                break;
+        }
+        return result;
+
+        bool ReadType(ref BlobReader signature, out bool byRef, out bool genericVariable)
+        {
+            BlobReader prefix = signature;
+            byRef = false;
+            genericVariable = false;
+            while (true)
+            {
+                SignatureTypeCode code = prefix.ReadSignatureTypeCode();
+                if (code is SignatureTypeCode.RequiredModifier or SignatureTypeCode.OptionalModifier)
+                {
+                    prefix.ReadTypeHandle();
+                    continue;
+                }
+                if (code == SignatureTypeCode.ByReference)
+                {
+                    byRef = true;
+                    continue;
+                }
+                if (code is SignatureTypeCode.SZArray or SignatureTypeCode.Array)
+                    continue;
+                genericVariable = code is SignatureTypeCode.GenericTypeParameter or SignatureTypeCode.GenericMethodParameter;
+                // Native retains only the prefix parsed before an unsupported type.
+                if (code is not (SignatureTypeCode.Void or SignatureTypeCode.Boolean or SignatureTypeCode.Char
+                    or SignatureTypeCode.SByte or SignatureTypeCode.Byte or SignatureTypeCode.Int16 or SignatureTypeCode.UInt16
+                    or SignatureTypeCode.Int32 or SignatureTypeCode.UInt32 or SignatureTypeCode.Int64 or SignatureTypeCode.UInt64
+                    or SignatureTypeCode.Single or SignatureTypeCode.Double or SignatureTypeCode.IntPtr or SignatureTypeCode.UIntPtr
+                    or SignatureTypeCode.String or SignatureTypeCode.Object or SignatureTypeCode.TypeHandle
+                    or SignatureTypeCode.GenericTypeParameter or SignatureTypeCode.GenericMethodParameter
+                    or SignatureTypeCode.GenericTypeInstance))
+                    return false;
+                // Decode to advance over complete array shapes and skipped generic arguments.
+                _ = new SignatureDecoder<string, ModuleMetadata>(SignatureNames.Instance, _md, this)
+                    .DecodeType(ref signature, allowTypeSpecifications: true);
+                return true;
+            }
+        }
     }
 
     public static string DisplayType(string type)

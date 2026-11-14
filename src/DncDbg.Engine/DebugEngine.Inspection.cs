@@ -301,16 +301,24 @@ public sealed partial class DebugEngine
         {
             (bool isStatic, _) = metadata.GetMethodParameters(methodToken);
             int firstParameter = isStatic ? 0 : 1;
+            frame.EnumerateArguments().Raw.GetCount(out int count).ThrowOnNotOK();
             var result = new List<string?>();
-            for (int i = firstParameter; i < frame.Arguments.Length; i++)
+            for (int i = firstParameter; i < count; i++)
             {
                 int argument = i;
-                result.Add(TryGet(() => _values.TypeName(frame.GetArgument(argument).ExactType)));
+                result.Add(TryGet(() =>
+                {
+                    CorDebugType type = frame.GetArgument(argument).ExactType;
+                    while (type.Type == CorElementType.ByRef)
+                        type = type.FirstTypeParameter;
+                    return _values.TypeName(type);
+                }));
             }
             return result;
         }
-        catch (Exception)
+        catch (Exception error)
         {
+            Log?.Invoke("Frame argument types unavailable: " + error.Message);
             return null;
         }
     }
