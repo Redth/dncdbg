@@ -53,6 +53,11 @@ if (args is ["--parameter-display"])
     Console.WriteLine($"Passed {ParameterDisplayChecks.Run()} parameter display checks.");
     return;
 }
+if (args is ["--parameter-display-async"])
+{
+    Console.WriteLine($"Passed {ParameterDisplayChecks.RunAsyncDeclarations()} async parameter display checks.");
+    return;
+}
 if (args is ["--resume-handles"])
 {
     Console.WriteLine($"Passed {ResumeHandleChecks.Run()} resume handle checks.");

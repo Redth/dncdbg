@@ -32,7 +32,10 @@ internal sealed partial class ModuleMetadata
         {
             MethodDefinitionHandle kickoff = _pdb.GetMethodDebugInformation(handle).GetStateMachineKickoffMethod();
             if (!kickoff.IsNil)
+            {
                 handle = kickoff;
+                argumentTypes = null;
+            }
         }
         MethodDefinition method = _md.GetMethodDefinition(handle);
         MethodSignature<string> signature = method.DecodeSignature(SignatureNames.Instance, this);
