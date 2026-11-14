@@ -54,6 +54,9 @@ evaluation or metadata type decoding. A live generic parameter without an
 available argument type is also shown by name, retaining its `ref`/`in`/`out`
 modifier; a successful empty type display does not trigger a declared-type
 fallback. Metadata-only names retain generic declaration names.
+When a state-machine frame is displayed as its original async declaration,
+physical `MoveNext` argument types do not override the declaration's substituted
+parameter types.
 Caller names use the immediate CLR caller frame, not a filtered user-code or
 logical async stack walk. A caller in an async state machine uses its original
 method name; a missing or unresolvable caller frame displays `[Unknown Frame]`.
