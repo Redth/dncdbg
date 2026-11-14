@@ -48,6 +48,16 @@ if (args is ["--launch-arguments"])
     Console.WriteLine($"Passed {LaunchArgumentChecks.Run()} launch argument checks.");
     return;
 }
+if (args is ["--parameter-display"])
+{
+    Console.WriteLine($"Passed {ParameterDisplayChecks.Run()} parameter display checks.");
+    return;
+}
+if (args is ["--parameter-display-async"])
+{
+    Console.WriteLine($"Passed {ParameterDisplayChecks.RunAsyncDeclarations()} async parameter display checks.");
+    return;
+}
 if (args is ["--resume-handles"])
 {
     Console.WriteLine($"Passed {ResumeHandleChecks.Run()} resume handle checks.");
@@ -90,6 +100,7 @@ string executable = Path.GetFullPath(args[0]);
 string logDirectory = Path.GetFullPath("build/validation/cli-smoke");
 Directory.CreateDirectory(logDirectory);
 int passed = EvaluationChecks.Run() + LaunchArgumentChecks.Run() + ResumeHandleChecks.Run();
+passed += ParameterDisplayChecks.Run();
 passed += OutgoingChecks.Run();
 passed += IncomingChecks.Run();
 passed += await ProtocolChecks.RunIncoming(executable);

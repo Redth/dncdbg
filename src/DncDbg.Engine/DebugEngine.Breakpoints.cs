@@ -756,12 +756,9 @@ public sealed partial class DebugEngine
                 {
                     if (current.IP.pMappingResult is CorDebugMappingResult.MAPPING_UNMAPPED_ADDRESS or CorDebugMappingResult.MAPPING_NO_INFO)
                         continue;
-                    ModuleMetadata? metadata = GetMetadata(current.Function.Module);
-                    name = GetLogpointMethodName(current);
-                    if (metadata?.GetAsyncBody((int)current.Function.Token.Value) != null
-                        || name.StartsWith("System.Runtime.CompilerServices.AsyncMethodBuilderCore", StringComparison.Ordinal)
-                        || name.StartsWith("System.Runtime.CompilerServices.AsyncTaskMethodBuilder", StringComparison.Ordinal))
+                    if (IsStackTraceHiddenFrame(current))
                         continue;
+                    name = GetLogpointMethodName(current);
                 }
                 else
                 {

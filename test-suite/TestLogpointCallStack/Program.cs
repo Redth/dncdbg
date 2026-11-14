@@ -192,7 +192,13 @@ partial class Context
             (jmc ? "[External Code]" : prefix + "NonUserInner()\n" + prefix + "NonUserOuter()") + "\n" + main, 1);
         CheckCallStackLine(callerTrace, "kickoff",
             prefix + "InnerAsync(System.Threading.Tasks.Task gate)\n" +
-            prefix + "OuterAsync(System.Threading.Tasks.Task gate)\n" + main, 1);
+            (jmc ? "[External Code]\n" :
+                "System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start<TestLogpointCallStack.Program.<InnerAsync>d__10>(ref stateMachine)\n" +
+                prefix + "InnerAsync(System.Threading.Tasks.Task gate)\n") +
+            prefix + "OuterAsync(System.Threading.Tasks.Task gate)\n" +
+            (jmc ? "[External Code]\n" :
+                "System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start<TestLogpointCallStack.Program.<OuterAsync>d__9>(ref stateMachine)\n" +
+                prefix + "OuterAsync(System.Threading.Tasks.Task gate)\n") + main, 1);
         if (jmc)
             CheckCallStackLine(callerTrace, "resumed",
                 prefix + "InnerAsync(System.Threading.Tasks.Task gate)\n[External Code]\n" + main, 1);
@@ -232,9 +238,17 @@ partial class Context
         Assert.True(Array.Exists(frames, f => f == "System.Threading.Tasks.TaskCompletionSource.SetResult()"), callerTrace);
         for (int i = 1; i < frames.Length - 1; i++)
             Assert.True(frames[i].StartsWith("System.", StringComparison.Ordinal), callerTrace);
-        Assert.True(!stack.Contains("OuterAsync") && !stack.Contains("[Async Call Stack]") &&
-            !stack.Contains("System.Runtime.CompilerServices.AsyncMethodBuilderCore") &&
-            !stack.Contains("System.Runtime.CompilerServices.AsyncTaskMethodBuilder"), callerTrace);
+        Assert.Equal("TestLogpointCallStack.Program.InnerAsync(System.Threading.Tasks.Task gate)\n" +
+            "System.Threading.ExecutionContext.RunInternal(System.Threading.ExecutionContext executionContext, System.Threading.ContextCallback callback, object state)\n" +
+            "System.Runtime.CompilerServices.AsyncTaskMethodBuilder<System.Threading.Tasks.VoidTaskResult>.AsyncStateMachineBox<TestLogpointCallStack.Program.<InnerAsync>d__10>.MoveNext(System.Threading.Thread threadPoolThread" +
+            (Environment.Version.Major >= 11 ? ", System.Runtime.CompilerServices.AsyncInstrumentation.Flags flags" : "") + ")\n" +
+            "System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(System.Runtime.CompilerServices.IAsyncStateMachineBox box, bool allowInlining)\n" +
+            "System.Threading.Tasks.Task.RunContinuations(object continuationObject)\n" +
+            "System.Threading.Tasks.Task.TrySetResult()\n" +
+            "System.Threading.Tasks.TaskCompletionSource.TrySetResult()\n" +
+            "System.Threading.Tasks.TaskCompletionSource.SetResult()\n" +
+            "TestLogpointCallStack.Program.Main(string[] args)", stack, callerTrace);
+        Assert.True(!stack.Contains("OuterAsync") && !stack.Contains("[Async Call Stack]"), callerTrace);
         string mixed = JsonConvert.SerializeObject(stack + " \"quoted\"\\tail");
         Assert.Equal("resumed:literal=$CALLSTACK|stack=" + quoted +
             "|plain=" + quoted.Substring(1, quoted.Length - 2) + "|same=true|hit=1" +
@@ -266,7 +280,8 @@ partial class Context
                 stack += "[Truncated Stack Trace]";
             else
             {
-                stack += unhandled ? prefix + "OnUnhandled(object sender, System.UnhandledExceptionEventArgs args)\n[External Code]\n"
+                stack += unhandled ? prefix + "OnUnhandled(object sender, System.UnhandledExceptionEventArgs args)\n" +
+                    (Environment.Version.Major == 9 ? "" : "[External Code]\n")
                     : prefix + "OnCaughtFinally()\n";
                 stack += prefix + "ForeignException(bool unhandled)\n" + prefix + "Main(string[] args)";
             }

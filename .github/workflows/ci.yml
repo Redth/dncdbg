@@ -58,6 +58,13 @@ jobs:
       - name: Build
         run: dotnet build DncDbg.slnx --configuration Release --no-restore --nologo
 
+      - name: Check shared test-suite runner contracts
+        shell: pwsh
+        run: |
+          $python = if ($IsWindows) { "python" } else { "python3" }
+          & $python tests/test_suite_runner.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Publish adapter
         run: dotnet publish src/DncDbg.Dap --configuration Release --no-build --output bin --nologo
 

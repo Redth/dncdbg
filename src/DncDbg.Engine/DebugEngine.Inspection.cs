@@ -1,4 +1,5 @@
 using ClrDebug;
+using System.Runtime.InteropServices;
 using DncDbg.Engine.Symbols;
 using DncDbg.Engine.Values;
 
@@ -211,8 +212,29 @@ public sealed partial class DebugEngine
     private CorDebugILFrame RequireILFrame(FrameRef frame) =>
         GetILFrame(frame) ?? throw new DebuggerException("The stack frame is no longer available.");
 
+    private bool IsStackTraceHiddenFrame(CorDebugILFrame frame)
+    {
+        try
+        {
+            CorDebugFunction function = frame.Function;
+            ModuleMetadata? metadata = GetMetadata(function.Module);
+            if (metadata != null)
+                return metadata.IsStackTraceHiddenMethod((int)function.Token.Value);
+            Log?.Invoke("Stack trace attributes unavailable: module metadata not found.");
+        }
+        catch (Exception error) when (error is COMException or BadImageFormatException or ArgumentException)
+        {
+            Log?.Invoke("Stack trace attributes unavailable: " + error.Message);
+        }
+        return false;
+    }
+
     private void AddFrame(List<FrameInfo> result, CorDebugILFrame frame, FrameRef frameRef)
     {
+        if (frame.IP.pMappingResult is CorDebugMappingResult.MAPPING_UNMAPPED_ADDRESS or CorDebugMappingResult.MAPPING_NO_INFO
+            || IsStackTraceHiddenFrame(frame))
+            return;
+
         CorDebugFunction function = frame.Function;
         int token = (int)function.Token.Value;
         ModuleMetadata? metadata = GetMetadata(function.Module);
@@ -279,16 +301,24 @@ public sealed partial class DebugEngine
         {
             (bool isStatic, _) = metadata.GetMethodParameters(methodToken);
             int firstParameter = isStatic ? 0 : 1;
+            frame.EnumerateArguments().Raw.GetCount(out int count).ThrowOnNotOK();
             var result = new List<string?>();
-            for (int i = firstParameter; i < frame.Arguments.Length; i++)
+            for (int i = firstParameter; i < count; i++)
             {
                 int argument = i;
-                result.Add(TryGet(() => _values.TypeName(frame.GetArgument(argument).ExactType)));
+                result.Add(TryGet(() =>
+                {
+                    CorDebugType type = frame.GetArgument(argument).ExactType;
+                    while (type.Type == CorElementType.ByRef)
+                        type = type.FirstTypeParameter;
+                    return _values.TypeName(type);
+                }));
             }
             return result;
         }
-        catch (Exception)
+        catch (Exception error)
         {
+            Log?.Invoke("Frame argument types unavailable: " + error.Message);
             return null;
         }
     }

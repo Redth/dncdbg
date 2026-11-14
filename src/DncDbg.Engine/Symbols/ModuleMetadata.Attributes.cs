@@ -15,6 +15,14 @@ internal enum BrowsableState
 // Debugger-related custom attributes, IL call sites and source documents.
 internal sealed partial class ModuleMetadata
 {
+    public bool IsStackTraceHiddenMethod(int methodToken)
+    {
+        const string attribute = "System.Diagnostics.StackTraceHiddenAttribute";
+        MethodDefinition method = _md.GetMethodDefinition((MethodDefinitionHandle)MetadataTokens.Handle(methodToken));
+        return FindAttribute(method.GetCustomAttributes(), attribute) != null
+            || FindAttribute(_md.GetTypeDefinition(method.GetDeclaringType()).GetCustomAttributes(), attribute) != null;
+    }
+
     public bool IsHiddenMethod(int methodToken)
     {
         MethodDefinition method = _md.GetMethodDefinition((MethodDefinitionHandle)MetadataTokens.Handle(methodToken));
