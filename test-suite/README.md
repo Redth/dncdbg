@@ -21,6 +21,12 @@ pwsh ./test-suite/run_tests.ps1
 # Run selected tests.
 pwsh ./test-suite/run_tests.ps1 TestBreakpoint TestEvaluate
 
+# Run all supported tests except the named tests.
+pwsh ./test-suite/run_tests.ps1 --skip TestBreakpoint TestEvaluate
+
+# Select tests first, then exclude from that selection.
+pwsh ./test-suite/run_tests.ps1 TestBreakpoint TestEvaluate --skip TestEvaluate
+
 # Use a debugger apphost from another location.
 $env:DNCDBG = "/path/to/dncdbg"
 pwsh ./test-suite/run_tests.ps1 TestBreakpoint
@@ -31,7 +37,39 @@ The runner discovers directories named `Test*` that contain a matching
 framework or enabling Windows Forms are included automatically on Windows and
 skipped on other operating systems.
 
+Names before the literal, case-sensitive `--skip` delimiter select tests; every
+name after it is an exclusion, including after a repeated `--skip`. With no
+selection before the delimiter, discovery is unchanged. Exclusions match exact,
+case-sensitive project names; unknown exclusions are ignored. Selection retains
+the managed runner's case-insensitive lookup and rejects unknown names. A
+selected Windows-only test is rejected on other systems unless explicitly
+excluded. Each matching exclusion is reported as `TestName ... skipped (requested)`
+without building or running that fixture, and counts toward `Total tests` and
+`Skipped`. Automatic Windows-only filtering retains its separate notice and does
+not add to these counts. The runner exits unsuccessfully if any build or test
+fails. Required parity gates still run without `--skip`; this option is for
+focused local runs, not a way to relax validation.
+
 The target framework can be overridden with the `DNCDBG_TARGET_FRAMEWORK` environment variable (for example, `net8.0`); by default, the tests target `net10.0`.
+
+The shared PowerShell entrypoint represents both upstream `run_tests.ps1` and
+`run_tests.sh` routes on Windows, Linux, and macOS. Its script behavior has an
+isolated black-box regression suite (Python 3 and PowerShell 7, no debugger or
+.NET SDK required):
+
+```sh
+python3 tests/test_suite_runner.py -v
+```
+
+The checks execute the actual script in a temporary fixture tree with a stub
+`dotnet`, covering selection/exclusion, discovery, failure exits, configuration,
+framework paths, Unicode sources and TCP routing. They are harness contracts,
+not evidence that a real debugger or target runtime passed. The same shared
+assertions can qualify an unchanged upstream script with
+`--script /path/to/run_tests.ps1 --kind native-ps1` or
+`--script /path/to/run_tests.sh --kind native-sh`. Windows suffix handling is
+executed only on a real Windows host, including an override already ending in
+`-windows`; these checks never fake the managed runner's host OS.
 
 For the managed debugger, build or publish from the repository root first:
 

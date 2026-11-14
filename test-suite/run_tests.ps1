@@ -16,6 +16,21 @@ $isWindowsHost = [OperatingSystem]::IsWindows()
 $suiteRoot = $PSScriptRoot
 $repoRoot = Split-Path -Parent $suiteRoot
 
+$testNames = [System.Collections.Generic.List[string]]::new()
+$skipNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+$skipMode = $false
+foreach ($argument in $Tests) {
+    if ($argument -ceq "--skip") {
+        $skipMode = $true
+    }
+    elseif ($skipMode) {
+        [void] $skipNames.Add($argument)
+    }
+    else {
+        $testNames.Add($argument)
+    }
+}
+
 function Test-IsWindowsOnly([string] $ProjectPath) {
     $project = Get-Content -Raw $ProjectPath
     return $project -match "<TargetFramework[^>]*>[^<]*-windows</TargetFramework>" -or
@@ -51,23 +66,27 @@ try {
         $projectsByName.Add($project.Name, $project)
     }
 
-    if ($Tests -and $Tests.Count -gt 0) {
-        $selectedProjects = foreach ($name in $Tests) {
+    if ($testNames.Count -gt 0) {
+        $selectedProjects = foreach ($name in $testNames) {
             $project = $null
             if (-not $projectsByName.TryGetValue($name, [ref] $project)) {
                 throw "Unknown test '$name'. Test projects must be named Test*/Test*.csproj."
             }
-            if ($project.WindowsOnly -and -not $isWindowsHost) {
+            if ($project.WindowsOnly -and -not $isWindowsHost -and -not $skipNames.Contains($project.Name)) {
                 throw "Test '$name' targets Windows and cannot run on this operating system."
             }
             $project
         }
     }
     else {
-        $selectedProjects = @($projects | Where-Object { $isWindowsHost -or -not $_.WindowsOnly })
-        $skipped = @($projects | Where-Object { -not $isWindowsHost -and $_.WindowsOnly })
-        if ($skipped.Count -gt 0) {
-            Write-Host "Skipping Windows-only tests: $($skipped.Name -join ', ')"
+        $selectedProjects = @($projects | Where-Object {
+            $isWindowsHost -or -not $_.WindowsOnly -or $skipNames.Contains($_.Name)
+        })
+        $windowsOnly = @($projects | Where-Object {
+            -not $isWindowsHost -and $_.WindowsOnly -and -not $skipNames.Contains($_.Name)
+        })
+        if ($windowsOnly.Count -gt 0) {
+            Write-Host "Skipping Windows-only tests: $($windowsOnly.Name -join ', ')"
         }
     }
 
@@ -89,6 +108,7 @@ try {
 
     $passed = 0
     $failed = 0
+    $skipped = 0
     $results = [System.Collections.Generic.List[string]]::new()
     $targetFramework = if ([string]::IsNullOrWhiteSpace($env:DNCDBG_TARGET_FRAMEWORK)) {
         "net10.0"
@@ -98,6 +118,12 @@ try {
     }
 
     foreach ($project in $selectedProjects) {
+        if ($skipNames.Contains($project.Name)) {
+            $skipped++
+            $results.Add("$($project.Name) ... skipped (requested)")
+            continue
+        }
+
         $configuration = if ($project.Name.EndsWith("_Release", [StringComparison]::Ordinal)) {
             "Release"
         }
@@ -151,7 +177,7 @@ try {
 
     Write-Output ""
     $results | Write-Output
-    Write-Output "Total tests: $($passed + $failed). Passed: $passed. Failed: $failed."
+    Write-Output "Total tests: $($passed + $failed + $skipped). Passed: $passed. Failed: $failed. Skipped: $skipped."
 
     if ($failed -ne 0) {
         exit 1
