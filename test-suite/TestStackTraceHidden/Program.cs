@@ -280,15 +280,12 @@ partial class Context
         WasEntryPointHit(trace);
         Continue(trace);
         HiddenStop(trace, "breakpoint");
-        string[] names =
-        {
-            "[Exception] " + HiddenPrefix + "HiddenType.ThrowOrigin()",
-            "[Exception] " + HiddenPrefix + "Program.Capture()",
-            HiddenPrefix + "Program.OnUnhandled(object sender, System.UnhandledExceptionEventArgs args)",
-            "[External Code]",
-            HiddenPrefix + "Program.Main(string[] args)",
-        };
-        WasOutputEvent(trace, "console", "foreign=" + JsonConvert.SerializeObject(string.Join("\n", names)) + "\n");
+        string stack = "[Exception] " + HiddenPrefix + "HiddenType.ThrowOrigin()\n" +
+            "[Exception] " + HiddenPrefix + "Program.Capture()\n" +
+            HiddenPrefix + "Program.OnUnhandled(object sender, System.UnhandledExceptionEventArgs args)\n" +
+            (Environment.Version.Major == 9 ? "" : "[External Code]\n") +
+            HiddenPrefix + "Program.Main(string[] args)";
+        WasOutputEvent(trace, "console", "foreign=" + JsonConvert.SerializeObject(stack) + "\n");
         Continue(trace);
         WasExit(trace, checkExitCode: null);
     }
