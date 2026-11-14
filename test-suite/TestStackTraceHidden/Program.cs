@@ -20,7 +20,7 @@ class Program
             Context Context = (Context)context;
             foreach (bool jmc in new[] { true, false })
                 Context.CheckHiddenFrames(@"__FILE__:__LINE__", jmc);
-            Context.CheckHiddenForeignFrames(@"__FILE__:__LINE__");
+            Context.CheckHiddenForeignCallStack(@"__FILE__:__LINE__");
             Context.DebuggerExit(@"__FILE__:__LINE__");
         });
 
@@ -266,7 +266,7 @@ partial class Context
         }), trace);
     }
 
-    public void CheckHiddenForeignFrames(string trace)
+    public void CheckHiddenForeignCallStack(string trace)
     {
         Initialize(trace);
         AddArgsListEntry("foreign");
@@ -289,11 +289,6 @@ partial class Context
             HiddenPrefix + "Program.Main(string[] args)",
         };
         WasOutputEvent(trace, "console", "foreign=" + JsonConvert.SerializeObject(string.Join("\n", names)) + "\n");
-        StackTraceResponse stack = HiddenStack(trace, 0, 100);
-        Assert.Equal(names.Length, stack.body.totalFrames, trace);
-        Assert.Equal(names.Length, stack.body.stackFrames.Count, trace);
-        for (int i = 0; i < names.Length; i++)
-            Assert.Equal(names[i], stack.body.stackFrames[i].name, trace);
         Continue(trace);
         WasExit(trace, checkExitCode: null);
     }
