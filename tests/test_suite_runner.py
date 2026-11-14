@@ -33,7 +33,7 @@ if __name__ == "__main__" and sys.argv[1:2] == ["--dotnet-stub"]:
 ROOT = Path(__file__).resolve().parents[1]
 OPTIONS = None
 PORTABLE = ["TestAlpha", "TestBeta", "TestOmega_Release",
-            "TestServerCustomPort", "TestServerDefaultPort", "Test\u00dcnicode"]
+            "TestServerCustomPort", "TestServerDefaultPort", "Test\u00dcnicode", "TestZulu"]
 WINDOWS = ["TestWindowsForms", "TestWindowsTarget"]
 
 
@@ -81,6 +81,9 @@ class SuiteRunnerTests(unittest.TestCase):
             self.env.pop(name, None)
         self.env.update(PATH=str(tools) + os.pathsep + os.environ["PATH"],
                         DNCDBG=str(self.debugger), RUNNER_TRACE=str(self.trace), TERM="dumb")
+        if OPTIONS.kind == "native-sh":
+            # Bash glob order has its own locale contract, not PowerShell's comparer.
+            self.env["LC_ALL"] = "C"
         self.calls = []
         self.output = ""
         self.invocations = 0
@@ -95,7 +98,10 @@ class SuiteRunnerTests(unittest.TestCase):
 
     @property
     def available(self):
-        return sorted(PORTABLE + (WINDOWS if os.name == "nt" else []))
+        names = PORTABLE + (WINDOWS if os.name == "nt" else [])
+        if OPTIONS.kind == "native-sh":
+            return sorted(names)
+        return [name for name in OPTIONS.project_order if name in names]
 
     def invoke(self, *arguments, failure=None, framework=None, success=True, powershell_array=False):
         if self.trace.exists():
@@ -126,6 +132,7 @@ class SuiteRunnerTests(unittest.TestCase):
             stem.with_suffix(".json").write_text(json.dumps({
                 "command": invocation, "arguments": arguments, "exitCode": result.returncode,
                 "dotnet": self.calls, "framework": framework, "failure": failure,
+                "LC_ALL": self.env.get("LC_ALL"),
             }, indent=2, ensure_ascii=False), encoding="utf-8")
         self.assertEqual(result.returncode == 0, success, self.output)
         return result
@@ -160,9 +167,9 @@ class SuiteRunnerTests(unittest.TestCase):
             self.assertNotIn("skipped (requested)", self.output)
 
     def test_selection_order(self):
-        self.invoke("TestBeta", "TestAlpha")
-        self.assertEqual(self.runs(), ["TestBeta", "TestAlpha"])
-        self.summary(2)
+        self.invoke("TestZulu", "Test\u00dcnicode", "TestBeta", "TestAlpha")
+        self.assertEqual(self.runs(), ["TestZulu", "Test\u00dcnicode", "TestBeta", "TestAlpha"])
+        self.summary(4)
 
     def test_powershell_array_invocation(self):
         if OPTIONS.kind == "native-sh":
@@ -328,8 +335,24 @@ class SuiteRunnerTests(unittest.TestCase):
         self.invoke("TestAlpha")
         run = next(call for call in self.calls if call[0] == "run")
         self.assertNotIn("Generated.cs", run[run.index("--sources") + 1])
-        self.assertEqual(run[run.index("--local") + 1], str(self.debugger))
+        self.assert_debugger_path(run[run.index("--local") + 1])
         self.assertIn("--no-build", run)
+
+    def assert_debugger_path(self, actual):
+        self.assertTrue(Path(actual).samefile(self.debugger), f"Wrong debugger file: {actual}")
+
+    def test_managed_debugger_file_identity(self):
+        self.managed_only()
+        alias = self.debugger.with_name("debugger-alias" + self.debugger.suffix)
+        os.link(self.debugger, alias)
+        self.env["DNCDBG"] = str(alias)
+        self.invoke("TestAlpha")
+        run = next(call for call in self.calls if call[0] == "run")
+        self.assert_debugger_path(run[run.index("--local") + 1])
+        different = self.debugger.with_name("different-file" + self.debugger.suffix)
+        different.touch()
+        with self.assertRaises(AssertionError):
+            self.assert_debugger_path(str(different))
 
     def test_managed_missing_debugger_fails_before_build(self):
         self.managed_only()
@@ -357,10 +380,21 @@ if __name__ == "__main__":
     OPTIONS, tests = parser.parse_known_args()
     OPTIONS.script = str(Path(OPTIONS.script).resolve())
     if OPTIONS.kind != "native-sh":
+        environment = os.environ.copy()
+        environment["RUNNER_TEST_NAMES"] = json.dumps(PORTABLE + WINDOWS)
         host = json.loads(subprocess.check_output([
             "pwsh", "-NoLogo", "-NoProfile", "-Command",
-            "@{ Host = [Environment]::ProcessPath; Home = $PSHOME } | ConvertTo-Json -Compress",
-        ], text=True, encoding="utf-8", timeout=30))
+            "$names = [string[]]@(ConvertFrom-Json $env:RUNNER_TEST_NAMES); "
+            "[array]::Sort($names, [StringComparer]::CurrentCultureIgnoreCase); "
+            "@{ Host = [Environment]::ProcessPath; Home = $PSHOME; "
+            "Culture = [cultureinfo]::CurrentCulture.Name; ProjectOrder = $names } | ConvertTo-Json -Compress",
+        ], env=environment, text=True, encoding="utf-8", timeout=30))
+        OPTIONS.project_order = host["ProjectOrder"]
+        if OPTIONS.evidence_dir:
+            evidence = Path(OPTIONS.evidence_dir)
+            evidence.mkdir(parents=True, exist_ok=True)
+            (evidence / "powershell-host.json").write_text(
+                json.dumps(host, indent=2, ensure_ascii=False), encoding="utf-8")
         OPTIONS.pwsh = [host["Host"]]
         if Path(host["Host"]).stem == "dotnet":
             # A dotnet-tool shim must not resolve its own host through the stub PATH.
