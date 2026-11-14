@@ -44,6 +44,16 @@ expression, once per hit. Method names reuse the user-facing metadata display,
 including concrete generic arguments and the original async method rather than
 its generated `MoveNext`. If method metadata is unavailable, the debugger logs
 a diagnostic and displays `[Unnamed managed method in optimized code]`.
+Parameter display inspects live arguments independently, including arguments
+after an optimized-away value. Unavailable types fall back to the supported
+metadata-signature prefix, matching native: an unsupported parameter or return
+type stops metadata fallback, but does not hide later available runtime types.
+A parameter can therefore appear by name without its type; available pointer
+types are still displayed. This display rule does not restrict expression
+evaluation or metadata type decoding. A live generic parameter without an
+available argument type is also shown by name, retaining its `ref`/`in`/`out`
+modifier; a successful empty type display does not trigger a declared-type
+fallback. Metadata-only names retain generic declaration names.
 Caller names use the immediate CLR caller frame, not a filtered user-code or
 logical async stack walk. A caller in an async state machine uses its original
 method name; a missing or unresolvable caller frame displays `[Unknown Frame]`.

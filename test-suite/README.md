@@ -132,6 +132,11 @@ Run the additional cross-platform CLI/protocol smoke checks from the repository 
 dotnet run --project tests/DncDbg.SmokeTests -- bin/dncdbg-dap
 ```
 
+The focused `--parameter-display` smoke selector exercises the shared frame and
+logpoint formatter with isolated metadata signatures and sparse live-argument
+vectors. It is also included in the ordinary smoke run; it does not replace the
+real native/managed `TestLogpoints` runtime qualification.
+
 These checks do not modify the existing Runner, ScriptContext, fixtures, or
 assertions. Their diagnostic logs are written under `build/validation/cli-smoke`.
 
