@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
+using System.Runtime.CompilerServices;
 using ClrDebug;
 using DncDbg.Engine;
 using DncDbg.Engine.Symbols;
@@ -116,7 +117,7 @@ internal static class ParameterDisplayChecks
         }
         if (errors.Count != 0)
             throw new InvalidOperationException("Parameter display checks failed:\n" + string.Join('\n', errors));
-        return checks;
+        return checks + RunAsyncDeclarations();
 
         int Add(string name, byte[] result, byte[][] parameters, string expected, string?[]? arguments = null,
             ParameterAttributes[]? attributes = null, string?[]? typeArguments = null, bool generic = false, bool isStatic = true)
@@ -183,5 +184,65 @@ internal static class ParameterDisplayChecks
             Check(result != null && result.Count == expectedIndices.Length && result.All(value => value == null),
                 $"argument count {count}: preserve individual unavailable arguments and exclude the receiver");
         }
+    }
+
+    public static int RunAsyncDeclarations()
+    {
+    string assembly = typeof(ParameterDisplayChecks).Assembly.Location;
+    using ModuleMetadata metadata = ModuleMetadata.TryOpen(assembly)
+        ?? throw new InvalidOperationException("Cannot open async declaration metadata.");
+    using MetadataReaderProvider symbols = MetadataReaderProvider.FromPortablePdbStream(
+        File.OpenRead(Path.ChangeExtension(assembly, ".pdb")));
+    MetadataReader pdb = symbols.GetMetadataReader();
+    int checks = 0;
+    var errors = new List<string>();
+    foreach (string name in new[] { "Static", "Instance", "Concrete" })
+    {
+        MethodInfo declaration = typeof(AsyncFixture<,>).GetMethod(name)!;
+        Type stateMachine = declaration.GetCustomAttribute<AsyncStateMachineAttribute>()!.StateMachineType;
+        MethodInfo moveNext = stateMachine.GetMethod("MoveNext", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        MethodDefinitionHandle kickoff = pdb.GetMethodDebugInformation(
+            (MethodDefinitionHandle)MetadataTokens.Handle(moveNext.MetadataToken)).GetStateMachineKickoffMethod();
+        Check(metadata.HasSymbols && MetadataTokens.GetToken(kickoff) == declaration.MetadataToken,
+            name + ": the actual compiler-generated MoveNext must map to its declaration in the portable PDB");
+        string expected = name == "Concrete" ? "(string text, int number)"
+            : "(string left, int right, Fixtures.Closed value)";
+        foreach (string?[]? physicalArguments in new string?[]?[] { null, [], [null], [null, null, null] })
+        {
+            string actual = metadata.GetParameterDisplay(moveNext.MetadataToken,
+                ["System.String", "System.Int32", "Fixtures.Closed"], physicalArguments);
+            Check(actual == expected, $"{name}: remapped declaration expected '{expected}', got '{actual}'");
+        }
+    }
+    if (errors.Count != 0)
+        throw new InvalidOperationException("Async parameter display checks failed:\n" + string.Join('\n', errors));
+    return checks;
+
+    void Check(bool success, string message)
+    {
+        checks++;
+        if (!success) errors.Add(message);
+    }
+    }
+
+    private sealed class AsyncFixture<TLeft, TRight>
+    {
+    public static async Task<TValue> Static<TValue>(TLeft left, TRight right, TValue value)
+    {
+        await Task.Yield();
+        return value;
+    }
+
+    public async Task<TValue> Instance<TValue>(TLeft left, TRight right, TValue value)
+    {
+        await Task.Yield();
+        return value;
+    }
+
+    public static async Task<int> Concrete(string text, int number)
+    {
+        await Task.Yield();
+        return number;
+    }
     }
 }
