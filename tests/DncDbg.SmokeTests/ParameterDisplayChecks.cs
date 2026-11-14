@@ -64,6 +64,25 @@ internal static class ParameterDisplayChecks
         Add("supported-ref", voidType, [[0x10, 0x08]], "(out int p0)", attributes: [ParameterAttributes.Out]);
         Add("generic-substitution", voidType, [[0x13, 0x00], [0x1e, 0x00]],
             "(int p0, string p1)", typeArguments: ["System.Int32", "System.String"], generic: true);
+        Add("generic-ref-unavailable", voidType, [[0x10, 0x1e, 0x00]], "(ref p0)", [null],
+            typeArguments: ["System.Int32", "Fixtures.StateMachine"], generic: true);
+        Add("generic-ref-empty", voidType, [[0x10, 0x1e, 0x00]], "(ref p0)", [""],
+            typeArguments: ["System.Int32", "Fixtures.StateMachine"], generic: true);
+        Add("generic-ref-available", voidType, [[0x10, 0x1e, 0x00]], "(ref Fixtures.ActualState p0)", ["Fixtures.ActualState"],
+            typeArguments: ["System.Int32", "Fixtures.StateMachine"], generic: true);
+        Add("generic-ref-metadata-only", voidType, [[0x10, 0x1e, 0x00]], "(ref U p0)", generic: true);
+        Add("generic-ref-no-fetched-values", voidType, [[0x10, 0x1e, 0x00]], "(ref p0)", [],
+            typeArguments: ["System.Int32", "Fixtures.StateMachine"], generic: true);
+        Add("generic-value-unavailable", voidType, [[0x13, 0x00]], "(p0)", [null], typeArguments: ["Fixtures.State"]);
+        Add("generic-array-unavailable", voidType, [[0x1d, 0x1e, 0x00]], "(p0)", [null], generic: true);
+        Add("generic-ref-out", voidType, [[0x10, 0x1e, 0x00]], "(out p0)", [null],
+            attributes: [ParameterAttributes.Out], generic: true);
+        Add("generic-ref-in", voidType, [[0x10, 0x1e, 0x00]], "(in Fixtures.ActualState p0)", ["Fixtures.ActualState"],
+            attributes: [ParameterAttributes.In], generic: true);
+        Add("nongeneric-ref-runtime-type", voidType, [[0x10, 0x12, 0x09]],
+            "(ref Fixtures.Derived p0)", ["Fixtures.Derived"]);
+        Add("nongeneric-ref-empty-type", voidType, [[0x10, 0x08]], "(out p0)", [""], attributes: [ParameterAttributes.Out]);
+        Add("nongeneric-empty-type", voidType, [integer], "(p0)", [""]);
         Add("zero", voidType, [], "()");
         int instance = Add("instance", voidType, [integer, boolean], "(int p0, bool p1)", isStatic: false);
         int instanceZero = Add("instance-zero", voidType, [], "()", isStatic: false);
