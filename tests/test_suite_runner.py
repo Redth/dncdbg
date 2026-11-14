@@ -33,7 +33,7 @@ if __name__ == "__main__" and sys.argv[1:2] == ["--dotnet-stub"]:
 ROOT = Path(__file__).resolve().parents[1]
 OPTIONS = None
 PORTABLE = ["TestAlpha", "TestBeta", "TestOmega_Release",
-            "TestServerCustomPort", "TestServerDefaultPort", "Test\u00dcnicode"]
+            "TestServerCustomPort", "TestServerDefaultPort", "Test\u00dcnicode", "TestZulu"]
 WINDOWS = ["TestWindowsForms", "TestWindowsTarget"]
 
 
@@ -160,9 +160,9 @@ class SuiteRunnerTests(unittest.TestCase):
             self.assertNotIn("skipped (requested)", self.output)
 
     def test_selection_order(self):
-        self.invoke("TestBeta", "TestAlpha")
-        self.assertEqual(self.runs(), ["TestBeta", "TestAlpha"])
-        self.summary(2)
+        self.invoke("TestZulu", "Test\u00dcnicode", "TestBeta", "TestAlpha")
+        self.assertEqual(self.runs(), ["TestZulu", "Test\u00dcnicode", "TestBeta", "TestAlpha"])
+        self.summary(4)
 
     def test_powershell_array_invocation(self):
         if OPTIONS.kind == "native-sh":
@@ -328,8 +328,24 @@ class SuiteRunnerTests(unittest.TestCase):
         self.invoke("TestAlpha")
         run = next(call for call in self.calls if call[0] == "run")
         self.assertNotIn("Generated.cs", run[run.index("--sources") + 1])
-        self.assertEqual(run[run.index("--local") + 1], str(self.debugger))
+        self.assert_debugger_path(run[run.index("--local") + 1])
         self.assertIn("--no-build", run)
+
+    def assert_debugger_path(self, actual):
+        self.assertEqual(actual, str(self.debugger))
+
+    def test_managed_debugger_file_identity(self):
+        self.managed_only()
+        alias = self.debugger.with_name("debugger-alias" + self.debugger.suffix)
+        os.link(self.debugger, alias)
+        self.env["DNCDBG"] = str(alias)
+        self.invoke("TestAlpha")
+        run = next(call for call in self.calls if call[0] == "run")
+        self.assert_debugger_path(run[run.index("--local") + 1])
+        different = self.debugger.with_name("different-file" + self.debugger.suffix)
+        different.touch()
+        with self.assertRaises(AssertionError):
+            self.assert_debugger_path(str(different))
 
     def test_managed_missing_debugger_fails_before_build(self):
         self.managed_only()
