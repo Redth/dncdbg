@@ -187,6 +187,16 @@ releasing the process.
 
 ### Debugging features
 
+Physical IL frames marked directly on their method or declaring type with
+`System.Diagnostics.StackTraceHiddenAttribute` are omitted from stack traces and
+logpoint `$CALLSTACK`, with or without Just My Code. The attribute does not change
+breakpoint or stepping eligibility, inherit from base/enclosing types, filter
+foreign-exception history, or change the physical `$CALLER`. The canonical
+`TestStackTraceHidden` fixture covers display ordering, pagination, full-stack
+counts, frame evaluation/scopes and these controls. The current native reference
+in the evaluator gate is pinned to upstream `0ef7e115`; its historical native and
+pre-fix managed references remain unchanged.
+
 - [Pseudo-variables](docs/pseudo_variables.md) - inspect the current exception, process and thread IDs.
 - [Evaluation format specifiers](docs/evaluation_format_specifiers.md) - control expression display and evaluation.
 - [Exception conditions](docs/exception_conditions.md) - select exception types and prefixes.

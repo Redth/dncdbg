@@ -1,4 +1,5 @@
 using ClrDebug;
+using System.Runtime.InteropServices;
 using DncDbg.Engine.Symbols;
 using DncDbg.Engine.Values;
 
@@ -211,8 +212,29 @@ public sealed partial class DebugEngine
     private CorDebugILFrame RequireILFrame(FrameRef frame) =>
         GetILFrame(frame) ?? throw new DebuggerException("The stack frame is no longer available.");
 
+    private bool IsStackTraceHiddenFrame(CorDebugILFrame frame)
+    {
+        try
+        {
+            CorDebugFunction function = frame.Function;
+            ModuleMetadata? metadata = GetMetadata(function.Module);
+            if (metadata != null)
+                return metadata.IsStackTraceHiddenMethod((int)function.Token.Value);
+            Log?.Invoke("Stack trace attributes unavailable: module metadata not found.");
+        }
+        catch (Exception error) when (error is COMException or BadImageFormatException or ArgumentException)
+        {
+            Log?.Invoke("Stack trace attributes unavailable: " + error.Message);
+        }
+        return false;
+    }
+
     private void AddFrame(List<FrameInfo> result, CorDebugILFrame frame, FrameRef frameRef)
     {
+        if (frame.IP.pMappingResult is CorDebugMappingResult.MAPPING_UNMAPPED_ADDRESS or CorDebugMappingResult.MAPPING_NO_INFO
+            || IsStackTraceHiddenFrame(frame))
+            return;
+
         CorDebugFunction function = frame.Function;
         int token = (int)function.Token.Value;
         ModuleMetadata? metadata = GetMetadata(function.Module);
