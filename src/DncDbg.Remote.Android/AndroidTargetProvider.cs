@@ -9,6 +9,7 @@ public sealed record AndroidTargetOptions
     public required string DeviceId { get; init; }
     public required string AppPath { get; init; }
     public string RuntimeIdentifier { get; init; } = "android-arm64";
+    public string? RuntimeVersion { get; init; }
     public bool ReplaceExisting { get; init; }
     public bool UninstallOnDisconnect { get; init; }
     public string ConnectionSecurity { get; init; } = "usb";
@@ -47,7 +48,7 @@ public sealed class AndroidTargetProvider : IRemoteTargetProvider
         if (!string.IsNullOrEmpty(server) && !server.StartsWith("localfilesystem:", StringComparison.Ordinal) &&
             !server.StartsWith("tcp:127.0.0.1:", StringComparison.Ordinal) && !server.StartsWith("tcp:localhost:", StringComparison.Ordinal))
             throw new ArgumentException("A remote plaintext ADB daemon cannot carry debugger credentials.");
-        Profile = ApplicationProfiles.ForRid(options.RuntimeIdentifier, agentManifest);
+        Profile = ApplicationProfiles.ForRid(options.RuntimeIdentifier, agentManifest, options.RuntimeVersion);
         package = ApplicationPackagePolicy.Read(agentManifest);
     }
 

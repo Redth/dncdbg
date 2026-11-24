@@ -75,7 +75,7 @@ else:
     sdk = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
     if not sdk:
         raise SystemExit("Set ANDROID_HOME to the installed Android SDK.")
-    ndk = Path(sdk) / "ndk/29.0.14206865"
+    ndk = Path(os.environ["ANDROID_NDK_ROOT"]) if os.environ.get("ANDROID_NDK_ROOT") else Path(sdk) / "ndk/29.0.14206865"
     host = {"Darwin": "darwin-x86_64", "Linux": "linux-x86_64"}.get(platform.system())
     if host is None:
         raise SystemExit("Native mobile helpers require macOS or Linux.")

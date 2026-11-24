@@ -13,15 +13,19 @@ public static class ApplicationProfiles
     public static readonly string[] Features = ["sourceBreakpoints", "threads", "modules", "scopes", "variables",
         "safeEvaluate", "pause", "stepIn", "next", "stepOut", "exceptions"];
 
-    public static TargetProfile ForRid(string rid, string agentManifest)
+    public static TargetProfile ForRid(string rid, string agentManifest) => ForRid(rid, agentManifest, null);
+
+    public static TargetProfile ForRid(string rid, string agentManifest, string? runtimeVersion)
     {
         string platform = rid.StartsWith("android-", StringComparison.Ordinal) ? "Android" :
             rid == "iossimulator-arm64" ? "iOSSimulator" : rid == "ios-arm64" ? "iOSDevice" :
             throw new PlatformNotSupportedException("The application RID has no qualified runtime profile.");
         string architecture = rid.EndsWith("-x64", StringComparison.Ordinal) ? "X64" : "Arm64";
+        runtimeVersion ??= rid == "android-arm64" ? PrivateBootstrapPolicy.AndroidArm64RuntimeVersion :
+            PrivateBootstrapPolicy.RuntimeVersion;
         PrivateBootstrapIdentity identity = PrivateBootstrapPolicy.SupportedBuilds.SingleOrDefault(x =>
-            x.Platform == platform && x.Architecture == architecture)
-            ?? throw new PlatformNotSupportedException($"No qualified exact runtime/DBI/DAC profile exists for {rid}; device transport support is not runtime qualification.");
+            x.Platform == platform && x.Architecture == architecture && x.RuntimeVersion == runtimeVersion)
+            ?? throw new PlatformNotSupportedException($"No qualified exact runtime/DBI/DAC profile exists for {rid}/{runtimeVersion}; device transport support is not runtime qualification.");
         TargetAgentIdentity agent = JsonSerializer.Deserialize(File.ReadAllText(agentManifest),
             TargetJson.Default.TargetAgentIdentity) ?? throw new InvalidDataException("Application agent integrity manifest is missing.");
         var profile = new TargetProfile(1, platform == "Android" ? "android" : "ios",

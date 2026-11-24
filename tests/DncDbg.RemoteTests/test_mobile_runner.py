@@ -304,6 +304,19 @@ class MobileRunnerTests(unittest.TestCase):
         inventory = json.loads(first)["Files"]
         self.assertEqual(list(inventory), sorted(files))
 
+    def test_publisher_inventory_uses_the_rid_runtime_without_relabeling_other_targets(self):
+        publisher = runpy.run_path(str(ROOT / "src/DncDbg.Remote.Target/publish.py"))
+        preview = "11.0.0-rc.1.26425.128"
+        for rid, version in (("android-arm64", "11.0.0"), ("android-x64", preview),
+                             ("ios-arm64", preview), ("osx-arm64", preview)):
+            destination = self.output / rid
+            destination.mkdir()
+            (destination / "agent").write_bytes(b"native agent fixture")
+            publisher["write_inventory"](destination, rid)
+            manifest = json.loads((destination / "integrity.json").read_text())
+            self.assertEqual((manifest["Rid"], manifest["RuntimeVersion"]), (rid, version))
+            self.assertEqual(set(manifest["Files"]), {"agent"})
+
     def test_publisher_excludes_build_test_temp_and_secret_artifacts(self):
         publisher = runpy.run_path(str(ROOT / "src/DncDbg.Remote.Target/publish.py"))
         source = self.output / "published"

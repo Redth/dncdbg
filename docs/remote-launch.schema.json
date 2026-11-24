@@ -106,6 +106,7 @@
       "properties": {
         "applicationId": { "type": "string" }, "deviceId": { "type": "string" }, "appPath": { "type": "string" },
         "runtimeIdentifier": { "enum": ["android-arm64", "android-x64"], "default": "android-arm64" },
+        "runtimeVersion": { "type": ["string", "null"], "description": "Exact allowlisted runtime version. Omit for 11.0.0 on android-arm64 or the pinned RC1 on android-x64; never enables roll-forward." },
         "connectionSecurity": { "enum": ["usb", "pairedTls"], "default": "usb" },
         "replaceExisting": { "type": "boolean", "default": false },
         "uninstallOnDisconnect": { "type": "boolean", "default": false }

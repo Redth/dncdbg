@@ -21,6 +21,10 @@ from fake_adb import FakeAdbDaemon
 ROOT = Path(__file__).resolve().parents[2]
 ADAPTER = ROOT / "src/DncDbg.Dap/bin/Release/net10.0/dncdbg-dap.dll"
 IDENTITIES = {
+    "AndroidGa": [
+        "Android", "D06B0D176C747F61A57D6929A0915324B4936770", "7A0E0C6E52F626F3DD112C5A3C9748B2454B39B3A356984F0D86357C30D693C8",
+        "5FDC6503F66820C1D4ACAB9CC5A9B9C929D1CD38", "F73B25E7268C52698EBEC2F797F3BA6108A31438679FE5D6236587DAD84E6C47",
+        "9732F10D985F26F9600A220EFB71B69DBA6642A5", "26C254DE4F484AB637E042C833BBE5318DF0777D4814F8DAC5C1A64776E7A1CA"],
     "AndroidX64": [
         "Android", "A3ABA7AECC5E3B02CEF376BA080FEEFD5D3C992F", "CEB01AE9B0CCCE2437C768CB2EE1BE0E719D6B60903F5521AEDFA1C7D16FD736",
         "6182AB42360380FF67C9F829EBCEBEFE500D51D2", "911AEE78E1143BD419228C4D2B768DE7092DEC2586867AF07CB08F274935C3A1",
@@ -61,8 +65,8 @@ def fake_profile(platform):
     identity = dict(zip(["Platform", "RuntimeBuildId", "RuntimeHash", "DbiBuildId", "DbiHash", "DacBuildId", "DacHash"],
                         IDENTITIES[platform]))
     identity |= {"Architecture": "X64" if platform == "AndroidX64" else "Arm64",
-                 "RuntimeVersion": "11.0.0-rc.1.26425.128"}
-    rid = "android-x64" if platform == "AndroidX64" else "android-arm64" if platform == "Android" else "iossimulator-arm64"
+                 "RuntimeVersion": "11.0.0" if platform == "AndroidGa" else "11.0.0-rc.1.26425.128"}
+    rid = "android-x64" if platform == "AndroidX64" else "android-arm64" if platform in ("Android", "AndroidGa") else "iossimulator-arm64"
     return {"SchemaVersion": 1, "Os": "ios" if platform == "iOS" else "android",
             "Architecture": identity["Architecture"].lower(), "Runtime": identity, "Agent": fake_agent(rid), "Capabilities": FEATURES}
 
@@ -75,6 +79,9 @@ def remote_launch(options):
     tunnel = options.pop("tunnel", None)
     timeout = options.pop("startupTimeoutSeconds", 60)
     provider = options.pop("provider", "android" if platform == "android" else "appleSimulator")
+    if platform == "android":
+        # Existing portable fakes and the mobile execution suite use the pinned RC1 fixture.
+        options.setdefault("runtimeVersion", "11.0.0-rc.1.26425.128")
     remote = {"assetsPath": assets, "outputPath": output, "startupTimeoutSeconds": timeout,
               "target": {"provider": provider, "android" if platform == "android" else "apple": options}}
     if tunnel is not None:
@@ -223,7 +230,7 @@ class Remote:
                             "SupportedBuild": dict(zip(
                                 ["Platform", "RuntimeBuildId", "RuntimeHash", "DbiBuildId", "DbiHash", "DacBuildId", "DacHash"],
                                 identity)) | {"Architecture": "X64" if self.platform == "AndroidX64" else "Arm64",
-                                              "RuntimeVersion": "11.0.0-rc.1.26425.128"},
+                                              "RuntimeVersion": "11.0.0" if self.platform == "AndroidGa" else "11.0.0-rc.1.26425.128"},
                             "Features": [
                                 "sourceBreakpoints", "threads", "modules", "scopes", "variables",
                                 "safeEvaluate", "pause", "stepIn", "next", "stepOut", "exceptions"],
@@ -556,6 +563,24 @@ class MobileDapTests(unittest.TestCase):
                                      f"tcp:{self.remote.endpoint['Port']}"]])
         self.assertFalse(any("reverse" in c or "--remove-all" in c for c in commands))
         self.assertTrue(any("uninstall" in c for c in commands))
+
+    def test_android_ga_is_the_default_and_uses_the_same_mobile_provider(self):
+        self.remote = Remote(self.state, "AndroidGa")
+        arguments = self.arguments(self.options("android"))
+        arguments["remote"]["target"]["android"].pop("runtimeVersion")
+        launch = self.dap.send("launch", arguments)
+        self.dap.request("configurationDone")
+        self.dap.response(launch)
+        self.dap.event("stopped")
+        self.assertEqual(self.dap.request("threads")["threads"][0]["id"], 7)
+        self.dap.request("disconnect", {"terminateDebuggee": True})
+        self.dap.event("terminated")
+
+    def test_android_unqualified_runtime_is_rejected_before_device_access(self):
+        arguments = self.arguments(self.options("android") | {"runtimeVersion": "11.0.1"})
+        launch = self.dap.send("launch", arguments)
+        self.dap.response(launch, success=False)
+        self.assertFalse((self.state / "commands.jsonl").exists())
 
     def test_android_x64_uses_the_same_mobile_provider(self):
         self.remote = Remote(self.state, "AndroidX64")

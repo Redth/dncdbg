@@ -9,6 +9,7 @@ public sealed record PrivateBootstrapIdentity(
 public static class PrivateBootstrapPolicy
 {
     public const string RuntimeVersion = "11.0.0-rc.1.26425.128";
+    public const string AndroidArm64RuntimeVersion = "11.0.0";
     public const string Bootstrap = "coreclr-dbi-v1";
     public static IReadOnlyList<PrivateBootstrapIdentity> SupportedBuilds { get; } = Array.AsReadOnly(new[]
     {
@@ -20,6 +21,10 @@ public static class PrivateBootstrapPolicy
             "F741D77EAE68D01DA37161129423DEC3AA9DFBF9", "E2FAE5E1F10FA61CDE54D9CC8E6E4537C3EDCE24B8E0216E078F655B04EACC92",
             "25A4607527A49B76F797C582AFB6D45338D2DB85", "363A647DCADB9D8200F2098B9C4313A6EC38735D970B6F2890D7A9951932A52A",
             "5A52173745A3C9B69D48A6A27B9E045C5DEAC1B4", "7956F691D19540801FC55E91D7F2F7258E26C0107C3F7E2B8AF709850E0AA3DB"),
+        new PrivateBootstrapIdentity("Android", "Arm64", AndroidArm64RuntimeVersion,
+            "D06B0D176C747F61A57D6929A0915324B4936770", "7A0E0C6E52F626F3DD112C5A3C9748B2454B39B3A356984F0D86357C30D693C8",
+            "5FDC6503F66820C1D4ACAB9CC5A9B9C929D1CD38", "F73B25E7268C52698EBEC2F797F3BA6108A31438679FE5D6236587DAD84E6C47",
+            "9732F10D985F26F9600A220EFB71B69DBA6642A5", "26C254DE4F484AB637E042C833BBE5318DF0777D4814F8DAC5C1A64776E7A1CA"),
         new PrivateBootstrapIdentity("Android", "X64", RuntimeVersion,
             "A3ABA7AECC5E3B02CEF376BA080FEEFD5D3C992F", "CEB01AE9B0CCCE2437C768CB2EE1BE0E719D6B60903F5521AEDFA1C7D16FD736",
             "6182AB42360380FF67C9F829EBCEBEFE500D51D2", "911AEE78E1143BD419228C4D2B768DE7092DEC2586867AF07CB08F274935C3A1",
@@ -58,7 +63,7 @@ public static class PrivateBootstrapPolicy
             dbi.BuildId, dbi.CodeHash, dac.BuildId, dac.CodeHash);
         if (Validate(observed, ["DllMain", "CoreCLRCreateCordbObject3"]) is { } error)
             throw new PlatformNotSupportedException(error);
-        return new(RuntimeVersion, platform, true, null, Bootstrap, observed,
+        return new(observed.RuntimeVersion, platform, true, null, Bootstrap, observed,
             "Native-hosted, private build-pinned CoreCLR; the same target agent and generated model as mobile.",
             RemoteContract.ModelVersion, "coreclr",
             ["sourceBreakpoints", "threads", "modules", "scopes", "variables", "safeEvaluate", "pause", "stepIn", "next", "stepOut", "exceptions"]);

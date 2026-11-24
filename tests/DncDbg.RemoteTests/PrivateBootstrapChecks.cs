@@ -1,5 +1,6 @@
 using DncDbg.Remote;
 using System.Buffers.Binary;
+using System.Text.Json;
 
 internal static class PrivateBootstrapChecks
 {
@@ -19,7 +20,24 @@ internal static class PrivateBootstrapChecks
         Reject(supported with { DacBuildId = new string('0', 32) }, exports, "DAC build identity");
         Reject(supported, ["CoreCLRCreateCordbObject3"], "missing DllMain export");
         Reject(supported, ["DllMain"], "missing factory export");
-        check(PrivateBootstrapPolicy.SupportedBuilds.Count == 4, "application allowlist separately pins Android architectures and Apple simulator/device images");
+        var androidGa = new PrivateBootstrapIdentity("Android", "Arm64", "11.0.0",
+            "D06B0D176C747F61A57D6929A0915324B4936770", "7A0E0C6E52F626F3DD112C5A3C9748B2454B39B3A356984F0D86357C30D693C8",
+            "5FDC6503F66820C1D4ACAB9CC5A9B9C929D1CD38", "F73B25E7268C52698EBEC2F797F3BA6108A31438679FE5D6236587DAD84E6C47",
+            "9732F10D985F26F9600A220EFB71B69DBA6642A5", "26C254DE4F484AB637E042C833BBE5318DF0777D4814F8DAC5C1A64776E7A1CA");
+        check(PrivateBootstrapPolicy.Validate(androidGa, exports) == null, "signed released Android arm64 CoreCLR/DBI/DAC tuple accepted");
+        Reject(androidGa with { RuntimeVersion = "11.0.1" }, exports, "unqualified Android patch");
+        Reject(androidGa with { Architecture = "X64" }, exports, "Android arm64 GA substituted for x64");
+        Reject(androidGa with { Platform = "iOSDevice" }, exports, "Android GA substituted for Apple");
+        Reject(androidGa with { RuntimeVersion = PrivateBootstrapPolicy.RuntimeVersion }, exports, "GA images relabeled as RC1");
+        Reject(androidGa with { RuntimeBuildId = new string('0', 40) }, exports, "changed Android GA runtime build ID");
+        Reject(androidGa with { RuntimeHash = new string('0', 64) }, exports, "changed Android GA runtime bytes");
+        Reject(androidGa with { DbiBuildId = new string('0', 40) }, exports, "changed Android GA DBI build ID");
+        Reject(androidGa with { DbiHash = new string('0', 64) }, exports, "changed Android GA DBI bytes");
+        Reject(androidGa with { DacBuildId = new string('0', 40) }, exports, "changed Android GA DAC build ID");
+        Reject(androidGa with { DacHash = new string('0', 64) }, exports, "changed Android GA DAC bytes");
+        Reject(androidGa, ["CoreCLRCreateCordbObject3"], "Android GA missing DllMain export");
+        Reject(androidGa, ["DllMain"], "Android GA missing factory export");
+        CheckApplicationProfiles(androidGa, check);
         PrivateBootstrapIdentity androidX64 = PrivateBootstrapPolicy.SupportedBuilds.Single(x =>
             x.Platform == "Android" && x.Architecture == "X64");
         check(PrivateBootstrapPolicy.Validate(androidX64, exports) == null, "exact Android x64 mobile private tuple accepted");
@@ -94,5 +112,62 @@ internal static class PrivateBootstrapChecks
             catch (InvalidDataException) { check(true, name); return; }
             throw new InvalidOperationException(name + " accepted invalid native image.");
         }
+    }
+
+    private static void CheckApplicationProfiles(PrivateBootstrapIdentity androidGa, Action<bool, string> check)
+    {
+        string directory = Path.Combine(Environment.CurrentDirectory, "build/validation/private-bootstrap", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string manifest = Path.Combine(directory, "dncdbg-agent.json");
+        try
+        {
+            foreach (var (rid, platform, architecture) in new[]
+            {
+                ("android-arm64", "Android", "Arm64"), ("android-x64", "Android", "X64"),
+                ("iossimulator-arm64", "iOSSimulator", "Arm64"), ("ios-arm64", "iOSDevice", "Arm64"),
+            })
+            {
+                var agent = new TargetAgentIdentity("dncdbg-target", rid, RemoteProtocol.Version,
+                    RemoteContract.ModelVersion, new string('b', 64), new string('c', 64),
+                    rid.StartsWith("ios", StringComparison.Ordinal) ? "linked-executable" : "native-library");
+                File.WriteAllText(manifest, JsonSerializer.Serialize(agent, TargetJson.Default.TargetAgentIdentity));
+                PrivateBootstrapIdentity expected = rid == "android-arm64" ? androidGa :
+                    PrivateBootstrapPolicy.SupportedBuilds.Single(x => x.Platform == platform && x.Architecture == architecture);
+                check(ApplicationProfiles.ForRid(rid, manifest).Runtime == expected,
+                    "unambiguous default application profile: " + rid);
+                if (rid == "android-arm64")
+                {
+                    TargetProfile gaProfile = ApplicationProfiles.ForRid(rid, manifest, "11.0.0");
+                    PrivateBootstrapIdentity preview = ApplicationProfiles.ForRid(rid, manifest,
+                        PrivateBootstrapPolicy.RuntimeVersion).Runtime;
+                    check(gaProfile.Runtime == androidGa && preview.RuntimeVersion == PrivateBootstrapPolicy.RuntimeVersion &&
+                        preview.RuntimeHash != androidGa.RuntimeHash,
+                        "explicit Android versions select distinct exact runtime/DBI/DAC tuples");
+                    string session = new('a', 32);
+                    var observed = new TargetManifest(1, session, gaProfile with { Runtime = preview },
+                        new TargetProcess(123, "fixture.dll", session),
+                        new RemoteEndpoint(12345, new string('d', 64), session, 123), new TargetTransport("127.0.0.1"));
+                    try
+                    {
+                        TargetManifestPolicy.Validate(observed, gaProfile, session);
+                        throw new InvalidOperationException("RC1 target substituted for an expected GA target.");
+                    }
+                    catch (InvalidDataException) { check(true, "an independently allowlisted RC1 target cannot replace expected GA"); }
+                }
+                else
+                {
+                    RejectVersion("11.0.0");
+                }
+                RejectVersion("11.0.1");
+
+                void RejectVersion(string version)
+                {
+                    try { _ = ApplicationProfiles.ForRid(rid, manifest, version); }
+                    catch (PlatformNotSupportedException) { check(true, "reject unqualified profile " + rid + "/" + version); return; }
+                    throw new InvalidOperationException("An unqualified application profile was selected.");
+                }
+            }
+        }
+        finally { Directory.Delete(directory, recursive: true); }
     }
 }

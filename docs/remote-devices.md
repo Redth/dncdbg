@@ -22,14 +22,48 @@ of a particular commit. Consult exact-head CI/evidence. A capacity cancellation,
 missing KVM/image/runtime, cleanup error or failed prerequisite is red, never a
 skip. A device transport contract/fake does not count as physical-device execution.
 
-Remote target images are **exact-build pinned**. Current target runtime and mobile
-SDK/workload packages include their actual upstream .NET 11 RC1 versions; those
-versions are not relabeled or presented as a stable Microsoft runtime release.
+Remote target images are **exact-build pinned**. Android arm64 defaults to released
+.NET **11.0.0**. Its original `11.0.0-rc.1.26425.128` profile remains available via
+`remote.target.android.runtimeVersion`; Android x64, Apple and native-host profiles
+still use their original RC1 identities. Selecting a version never permits
+roll-forward, changed image bytes or another platform's DBI/DAC.
 The host API/configuration is stable; CoreCLR private DBI startup remains a private,
 version-fragile implementation dependency. Mono, NativeAOT, arbitrary framework
 versions and unlisted OS/architecture combinations are rejected. Adding another
 image requires exact build IDs/hashes/exports plus qualification, not a manifest
 override or roll-forward switch.
+
+### Released Android arm64 runtime
+
+The GA tuple comes from the signed
+`Microsoft.NETCore.App.Runtime.android-arm64/11.0.0` NuGet package, including its
+own `libmscordbi.so` and `libmscordaccore.so` (no desktop debugger substitution).
+Microsoft's author signature and the NuGet.org repository countersignature were
+verified with `dotnet nuget verify --all`. Package SHA-256:
+`9FC85212E1F348BB73DD05986BE09436DCF8E610DB37648E25CC6E96AAE69683`.
+Its repository metadata identifies dotnet/dotnet commit
+`297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f`.
+
+| Unmodified AArch64 ELF image | GNU build ID | Full-file SHA-256 |
+|---|---|---|
+| `libcoreclr.so` | `D06B0D176C747F61A57D6929A0915324B4936770` | `7A0E0C6E52F626F3DD112C5A3C9748B2454B39B3A356984F0D86357C30D693C8` |
+| `libmscordbi.so` | `5FDC6503F66820C1D4ACAB9CC5A9B9C929D1CD38` | `F73B25E7268C52698EBEC2F797F3BA6108A31438679FE5D6236587DAD84E6C47` |
+| `libmscordaccore.so` | `9732F10D985F26F9600A220EFB71B69DBA6642A5` | `26C254DE4F484AB637E042C833BBE5318DF0777D4814F8DAC5C1A64776E7A1CA` |
+
+The GA DBI defines `DllMain` and `CoreCLRCreateCordbObject3`; the factory signature
+in the matching upstream source agrees with the existing private startup ABI.
+This is signed-binary/export qualification and portable host-contract coverage,
+**not a GA emulator or physical-device execution claim**. The existing mobile
+execution fixtures stay pinned to RC1 and explicitly select that version.
+Runtime images modified by stripping or substitution still fail exact admission.
+
+The Android provider needs no version setting for this GA arm64 tuple. For an
+existing RC1 app, set `"runtimeVersion": "11.0.0-rc.1.26425.128"` alongside
+`"runtimeIdentifier": "android-arm64"`. An unlisted version fails before ADB access.
+Consumers updating a vendored debugger must rebuild the adapter/provider and
+the app's managed startup policy, rebuild and package the matching RID-native
+agent with its generated `dncdbg-agent.json`, then reseal the final APK's
+`dncdbg-package.json`. Updating only a host-side version string is insufficient.
 
 ## Common launch settings
 
@@ -346,6 +380,12 @@ per-file SHA-256 `integrity.json`. Mobile packages contain only the explicit RID
 agent/metadata. Build Linux assets in a matching Linux container/host. Do not mix
 agent RIDs or copy target packages into an ordinary desktop adapter artifact.
 Fault-enabled Release targets are rejected.
+
+Android native builds default to SDK NDK `29.0.14206865`. Set `ANDROID_NDK_ROOT`
+to an explicit NDK directory to use a separately provisioned toolchain, including
+a private current stable NDK, without modifying a shared SDK. The build always
+regenerates the native image's content hash in `dncdbg-agent.json`; protocol/model
+validation and post-link package admission remain unchanged.
 
 `--payload-directory` declares the complete `dotnet publish` output: native
 `runtimes/*` assets, satellite resource assemblies, content subdirectories and

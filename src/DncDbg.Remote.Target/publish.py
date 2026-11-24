@@ -150,7 +150,8 @@ def write_inventory(output, rid):
             for block in iter(lambda: stream.read(1024 * 1024), b""):
                 hash.update(block)
         return hash.hexdigest()
-    manifest = {"SchemaVersion": 1, "Rid": rid, "RuntimeVersion": LOCK["version"],
+    runtime_version = "11.0.0" if rid == "android-arm64" else LOCK["version"]
+    manifest = {"SchemaVersion": 1, "Rid": rid, "RuntimeVersion": runtime_version,
                 "Files": {p.relative_to(output).as_posix(): digest(p)
                           for p in sorted(output.rglob("*"), key=lambda p: p.relative_to(output).as_posix())
                           if p.is_file() and p != output / "integrity.json"}}
